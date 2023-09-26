@@ -1,0 +1,10 @@
+# vim: ft=yaml
+
+services:
+  app:
+    image: http2sip
+    #entrypoint: [ "/opt/http2sip", "-debug" ]
+    restart: always
+    volumes:
+      - ./config.yml:/opt/http2sip/config.yml
+
