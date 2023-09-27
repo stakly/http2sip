@@ -2,7 +2,9 @@ package auth
 
 import (
 	"fmt"
+	"log"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -52,8 +54,12 @@ func (sa *SipAuth) String() string {
 	return "Digest " + strings.Join(values, ",")
 }
 
-// GetSipAuth populate sipAuth struct from SIP WWWAuthenticate header string
-func GetSipAuth(authenticate string, sipAuth *SipAuth) {
+// GetSipAuth populate sipAuth struct from SIP WWW-Authenticate header string
+func GetSipAuth(authenticate string, sipAuth *SipAuth) error {
+	re := regexp.MustCompile("^Digest ([^=]+=[^,]+)(,[^=]+=[^,]+)*\\s*$")
+	if !re.MatchString(authenticate) {
+		return fmt.Errorf("authenticate string doesn't match Digest authentication format: '%s'", authenticate)
+	}
 	authenticate = strings.TrimSpace(authenticate)
 	params := strings.Split(authenticate[7:], ",") // skip Digest string
 	sipAuthStruct := reflect.Indirect(reflect.ValueOf(&sipAuth)).Elem()
@@ -65,7 +71,13 @@ func GetSipAuth(authenticate string, sipAuth *SipAuth) {
 			if kv[1][0] == '"' {
 				value, _ = strconv.Unquote(kv[1])
 			}
+			field := sipAuthStruct.FieldByName(key)
+			if field == (reflect.Value{}) {
+				log.Printf("'%s' element not used in SipAuth struct, skipping...", kv[0])
+				continue
+			}
 			sipAuthStruct.FieldByName(key).SetString(value)
 		}
 	}
+	return nil
 }

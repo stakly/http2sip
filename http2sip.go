@@ -97,7 +97,21 @@ func sipHandler(transport *dialog.Transport) {
 							registerPkt.CSeq = sipCseq
 							// ACK not needed on REGISTER
 							uri := sip.URI{Scheme: "sip", Host: cfg.SipServer}
-							registerPkt.Authorization = auth.GetDigestString(msg.WWWAuthenticate, cfg.SipUser, cfg.SipPassword, uri.String(), sip.MethodRegister)
+							if msg.WWWAuthenticate != "" {
+								registerPkt.Authorization, err = auth.GetDigestString(msg.WWWAuthenticate, cfg.SipUser, cfg.SipPassword, uri.String(), sip.MethodRegister)
+								if err != nil {
+									log.Println(err)
+									break
+								}
+							} else if msg.ProxyAuthenticate != "" {
+								registerPkt.ProxyAuthorization, err = auth.GetDigestString(msg.ProxyAuthenticate, cfg.SipUser, cfg.SipPassword, uri.String(), sip.MethodRegister)
+								if err != nil {
+									log.Println(err)
+									break
+								}
+							} else {
+								log.Println("WWW-Authenticate or Proxy-Authenticate headers NOT FOUND")
+							}
 							err = transport.Send(registerPkt)
 							if err != nil {
 								log.Println(err)
@@ -122,8 +136,11 @@ func sipHandler(transport *dialog.Transport) {
 							invitePkt.CSeq = sipCseq
 
 							uri := sip.URI{Scheme: "sip", User: cfg.SipCallNumber, Host: cfg.SipServer}
-							invitePkt.Authorization = auth.GetDigestString(msg.WWWAuthenticate, cfg.SipUser, cfg.SipPassword, uri.String(), sip.MethodInvite)
-
+							invitePkt.Authorization, err = auth.GetDigestString(msg.WWWAuthenticate, cfg.SipUser, cfg.SipPassword, uri.String(), sip.MethodInvite)
+							if err != nil {
+								log.Println(err)
+								break
+							}
 							err = transport.Send(invitePkt)
 							if err != nil {
 								log.Println(err)
@@ -375,7 +392,6 @@ func main() {
 		log.Println(err)
 		return
 	}
-	//defer transport.Sock.Close()
 
 	// running message handler and SIP REGISTER initialization
 	go sipHandler(transport)
