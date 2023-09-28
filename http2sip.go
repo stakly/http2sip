@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "embed"
+	"errors"
 	"flag"
 	"fmt"
 	"html"
@@ -76,6 +77,17 @@ func sipHandler(transport *dialog.Transport) {
 	var msg *sip.Msg
 	var err error
 
+	getAuth := func(answer *sip.Msg, request *sip.Msg, uri sip.URI, method string) (err error) {
+		if answer.WWWAuthenticate != "" {
+			request.Authorization, err = auth.GetDigestString(answer.WWWAuthenticate, cfg.SipUser, cfg.SipPassword, uri.String(), method)
+		} else if answer.ProxyAuthenticate != "" {
+			request.ProxyAuthorization, err = auth.GetDigestString(answer.ProxyAuthenticate, cfg.SipUser, cfg.SipPassword, uri.String(), method)
+		} else {
+			err = errors.New("WWW-Authenticate or Proxy-Authenticate headers NOT FOUND")
+		}
+		return err
+	}
+
 	for {
 		select {
 		case err = <-transport.E:
@@ -97,23 +109,11 @@ func sipHandler(transport *dialog.Transport) {
 							registerPkt.CSeq = sipCseq
 							// ACK not needed on REGISTER
 							uri := sip.URI{Scheme: "sip", Host: cfg.SipServer}
-
-							if msg.WWWAuthenticate != "" {
-								registerPkt.Authorization, err = auth.GetDigestString(msg.WWWAuthenticate, cfg.SipUser, cfg.SipPassword, uri.String(), sip.MethodRegister)
-								if err != nil {
-									log.Println(err)
-									break
-								}
-							} else if msg.ProxyAuthenticate != "" {
-								registerPkt.ProxyAuthorization, err = auth.GetDigestString(msg.ProxyAuthenticate, cfg.SipUser, cfg.SipPassword, uri.String(), sip.MethodRegister)
-								if err != nil {
-									log.Println(err)
-									break
-								}
-							} else {
-								log.Println("WWW-Authenticate or Proxy-Authenticate headers NOT FOUND")
+							err = getAuth(msg, registerPkt, uri, sip.MethodRegister)
+							if err != nil {
+								log.Println(err)
+								break
 							}
-
 							err = transport.Send(registerPkt)
 							if err != nil {
 								log.Println(err)
@@ -138,20 +138,10 @@ func sipHandler(transport *dialog.Transport) {
 							invitePkt.CSeq = sipCseq
 							uri := sip.URI{Scheme: "sip", User: cfg.SipCallNumber, Host: cfg.SipServer}
 
-							if msg.WWWAuthenticate != "" {
-								invitePkt.Authorization, err = auth.GetDigestString(msg.WWWAuthenticate, cfg.SipUser, cfg.SipPassword, uri.String(), sip.MethodInvite)
-								if err != nil {
-									log.Println(err)
-									break
-								}
-							} else if msg.ProxyAuthenticate != "" {
-								invitePkt.ProxyAuthorization, err = auth.GetDigestString(msg.ProxyAuthenticate, cfg.SipUser, cfg.SipPassword, uri.String(), sip.MethodInvite)
-								if err != nil {
-									log.Println(err)
-									break
-								}
-							} else {
-								log.Println("WWW-Authenticate or Proxy-Authenticate headers NOT FOUND")
+							err = getAuth(msg, invitePkt, uri, sip.MethodInvite)
+							if err != nil {
+								log.Println(err)
+								break
 							}
 
 							err = transport.Send(invitePkt)
